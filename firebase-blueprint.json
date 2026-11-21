@@ -1,0 +1,261 @@
+{
+  "entities": {
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Authorized wholesaler admin UID record for zero-trust RBAC verification.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID of the admin." },
+        "email": { "type": "string", "description": "Verified email address of the admin." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["userId", "email", "createdAt"]
+    },
+    "StoreSettings": {
+      "title": "StoreSettings",
+      "description": "Wholesaler public store settings used for WhatsApp order routing and branding.",
+      "type": "object",
+      "properties": {
+        "businessName": { "type": "string", "description": "Wholesaler business name." },
+        "whatsappPhone": { "type": "string", "description": "Wholesaler 10-15 digit WhatsApp phone number." },
+        "city": { "type": "string", "description": "Wholesaler city/hub location." },
+        "showNewArrivals": { "type": "boolean", "description": "Admin toggle to show or hide the New Arrivals section on the Buyer Home tab." },
+        "newArrivalsTitle": { "type": "string", "description": "Custom heading for the Buyer Home New Arrivals section." },
+        "newArrivalsLimit": { "type": "integer", "description": "Maximum number of newly listed items shown in the Buyer Home carousel." },
+        "primaryColorHex": { "type": "string", "description": "Admin-selected primary brand color hex code (#RRGGBB) applied across the app and buyer catalog." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["businessName", "whatsappPhone", "city", "updatedAt"]
+    },
+    "BusinessProfile": {
+      "title": "BusinessProfile",
+      "description": "Admin-only billing firm profile and atomic invoice counter (settings/businessProfile).",
+      "type": "object",
+      "properties": {
+        "firmName": { "type": "string", "description": "Legal wholesale firm name for invoices." },
+        "address": { "type": "string", "description": "Full firm address." },
+        "phone": { "type": "string", "description": "Firm contact/WhatsApp number." },
+        "gstin": { "type": "string", "description": "Optional GSTIN of the wholesaler firm." },
+        "upiId": { "type": "string", "description": "Optional UPI ID printed on invoices for digital payments." },
+        "invoicePrefix": { "type": "string", "description": "Prefix for sequential invoice numbers (default INV)." },
+        "nextInvoiceNumber": { "type": "integer", "description": "Auto-incremented invoice counter updated inside a Firestore transaction." },
+        "lowStockThreshold": { "type": "integer", "description": "Minimum stock quantity threshold below which Admin Inventory triggers a Low Stock alert badge." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["firmName", "address", "phone", "gstin", "upiId", "invoicePrefix", "nextInvoiceNumber", "updatedAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Registered wholesaler admin or shopkeeper buyer account.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "shopName": { "type": "string" },
+        "phone": { "type": "string" },
+        "city": { "type": "string" },
+        "gstin": { "type": "string", "description": "Optional shopkeeper GSTIN." },
+        "fcmToken": { "type": "string", "description": "Optional Firebase Cloud Messaging registration token for push notifications." },
+        "notifyOrderUpdates": { "type": "boolean", "description": "Optional preference to receive instant order status update notifications." },
+        "notifyNewProducts": { "type": "boolean", "description": "Optional preference to receive instant new wholesale product notifications." },
+        "role": { "type": "string", "enum": ["admin", "shopkeeper"] },
+        "status": { "type": "string", "enum": ["pending", "approved", "blocked"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "email", "shopName", "phone", "city", "role", "status", "createdAt", "updatedAt"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Car accessory catalog category.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "createdAt", "updatedAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Wholesale car accessory catalog item with pricing, MOQ, stock status, optional HSN/GST, and compressed photos.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "carModel": { "type": "string" },
+        "price": { "type": "number" },
+        "moq": { "type": "integer" },
+        "inStock": { "type": "boolean" },
+        "stockQuantity": { "type": "integer", "description": "Optional current warehouse inventory quantity in pieces used for Low Stock monitoring." },
+        "newArrival": { "type": "boolean", "description": "Optional admin-controlled flag to highlight this product in the Buyer Home New Arrivals section." },
+        "description": { "type": "string" },
+        "hsnCode": { "type": "string", "description": "Optional HSN code for GST billing." },
+        "gstPercent": { "type": "integer", "enum": [0, 5, 12, 18, 28], "description": "Optional GST tax slab percentage." },
+        "imageUrls": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "category", "carModel", "price", "moq", "inStock", "description", "imageUrls", "createdAt", "updatedAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "B2B wholesale order placed by an approved shopkeeper.",
+      "type": "object",
+      "properties": {
+        "shopkeeperId": { "type": "string" },
+        "shopName": { "type": "string" },
+        "phone": { "type": "string" },
+        "city": { "type": "string" },
+        "items": { "type": "array" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["Pending", "Confirmed", "Dispatched", "Delivered"] },
+        "invoiceId": { "type": "string", "description": "Optional linked invoice document ID once billed." },
+        "stockDeducted": { "type": "boolean", "description": "Optional flag indicating product stock quantities were deducted upon delivery or billing to prevent double deduction." },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["shopkeeperId", "shopName", "phone", "city", "items", "totalAmount", "status", "createdAt", "updatedAt"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "GST Tax Invoice or Estimate / Cash Memo with payment history and Udhaar tracking.",
+      "type": "object",
+      "properties": {
+        "invoiceNumber": { "type": "string" },
+        "orderId": { "type": "string" },
+        "billType": { "type": "string", "enum": ["GST Invoice", "Estimate / Cash Memo"] },
+        "shopkeeperId": { "type": "string" },
+        "shopName": { "type": "string" },
+        "phone": { "type": "string" },
+        "city": { "type": "string" },
+        "shopGstin": { "type": "string" },
+        "firmName": { "type": "string" },
+        "firmAddress": { "type": "string" },
+        "firmPhone": { "type": "string" },
+        "firmGstin": { "type": "string" },
+        "firmUpiId": { "type": "string" },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "taxType": { "type": "string", "enum": ["CGST+SGST", "IGST", "None"] },
+        "taxAmount": { "type": "number" },
+        "transportCharges": { "type": "number" },
+        "grandTotal": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "balanceDue": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["Unpaid", "Partial", "Paid"] },
+        "paymentHistory": { "type": "array" },
+        "stockDeducted": { "type": "boolean", "description": "Optional flag indicating catalog product stock quantities were deducted when generating this invoice." },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "invoiceNumber", "orderId", "billType", "shopkeeperId", "shopName", "phone", "city",
+        "shopGstin", "firmName", "firmAddress", "firmPhone", "firmGstin", "firmUpiId",
+        "items", "subtotal", "discountAmount", "taxType", "taxAmount", "transportCharges",
+        "grandTotal", "paidAmount", "balanceDue", "paymentStatus", "paymentHistory",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "NotificationEvent": {
+      "title": "NotificationEvent",
+      "description": "FCM push dispatch and real-time shopkeeper notification event created by Admin on order status updates or new product listings.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["order_status", "new_product"] },
+        "targetUserId": { "type": "string", "description": "Target shopkeeper UID for order status updates, or ALL_BUYERS for new product broadcasts." },
+        "targetTopic": { "type": "string", "description": "FCM topic name (e.g. new_products or user_<uid>)." },
+        "targetFcmToken": { "type": "string", "description": "Optional recipient FCM device token snapshot for server-side FCM HTTP v1 delivery." },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "orderId": { "type": "string" },
+        "productId": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "targetUserId", "targetTopic", "title", "body", "orderId", "productId", "status", "createdAt"]
+    },
+    "AdminActivityLog": {
+      "title": "AdminActivityLog",
+      "description": "Immutable, append-only admin audit log tracking critical actions such as product additions, wholesale price changes, shopkeeper approvals/blocks, order/billing actions, and theme/settings changes.",
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "product_added",
+            "price_changed",
+            "product_updated",
+            "product_deleted",
+            "stock_updated",
+            "shopkeeper_approved",
+            "shopkeeper_blocked",
+            "order_status_updated",
+            "invoice_created",
+            "payment_recorded",
+            "invoice_deleted",
+            "settings_updated",
+            "theme_updated"
+          ]
+        },
+        "category": {
+          "type": "string",
+          "enum": ["product", "pricing", "shopkeeper", "order", "billing", "settings"]
+        },
+        "actorUid": { "type": "string", "description": "Firebase Auth UID of the admin who performed the action (must equal request.auth.uid)." },
+        "actorEmail": { "type": "string", "description": "Email address of the admin actor." },
+        "actorName": { "type": "string", "description": "Display name of the admin actor." },
+        "targetId": { "type": "string", "description": "Document ID of the affected product, user, order, invoice, or settings record." },
+        "targetName": { "type": "string", "description": "Human-readable name of the affected entity." },
+        "summary": { "type": "string", "description": "Concise human-readable description of the change." },
+        "previousValue": { "type": "string", "description": "Previous state or price before the change (empty string if not applicable)." },
+        "newValue": { "type": "string", "description": "New state or price after the change (empty string if not applicable)." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": [
+        "action", "category", "actorUid", "actorEmail", "actorName",
+        "targetId", "targetName", "summary", "previousValue", "newValue", "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Trusted admin role records."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/StoreSettings" },
+      "description": "Wholesaler store (store) and billing firm profile (businessProfile)."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles for wholesaler admin and shopkeepers."
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Car accessory categories."
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Wholesale car accessories catalog."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Wholesale orders placed by approved shopkeepers."
+    },
+    "/invoices/{invoiceId}": {
+      "schema": { "$ref": "#/entities/Invoice" },
+      "description": "GST tax invoices and cash memos with Udhaar payment tracking."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/NotificationEvent" },
+      "description": "Admin-authored FCM notification events for order status changes and new product arrivals."
+    },
+    "/activityLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AdminActivityLog" },
+      "description": "Immutable admin-only security & accountability audit trail."
+    }
+  }
+}

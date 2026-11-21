@@ -1,0 +1,32 @@
+<resources>
+    <string name="app_name">AutoTrade</string>
+    <string name="app_tagline">B2B Car Accessories Wholesale</string>
+    <string name="sign_in_google">Sign in with Google</string>
+    <string name="sign_out">Sign Out</string>
+    <string name="nav_inventory">Inventory</string>
+    <string name="nav_catalog">Catalog</string>
+    <string name="nav_cart">Cart</string>
+    <string name="nav_orders">Orders</string>
+    <string name="nav_buyers">Buyers</string>
+    <string name="nav_profile">Profile</string>
+    <string name="add_product">Add Product</string>
+    <string name="edit_product">Edit Product</string>
+    <string name="take_photo">Take Photo</string>
+    <string name="upload_gallery">Gallery</string>
+    <string name="place_order">Place Order</string>
+    <string name="send_whatsapp">Send on WhatsApp</string>
+    <string name="waiting_approval_title">Waiting for Admin Approval</string>
+    <string name="waiting_approval_body">Your wholesale buyer account is under review. Wholesale rates and ordering will unlock automatically the moment the wholesaler approves your shop.</string>
+    <string name="account_blocked_title">Account Access Restricted</string>
+    <string name="account_blocked_body">Your buyer account is currently paused by the wholesaler. Please contact the wholesaler directly to reactivate access.</string>
+    <string name="search_placeholder">Search by product name or category…</string>
+    <string name="new_arrival">NEW ARRIVAL</string>
+    <string name="in_stock">In Stock</string>
+    <string name="out_of_stock">Out of Stock</string>
+    <string name="approve">Approve</string>
+    <string name="block">Block</string>
+    <string name="export_excel">Excel</string>
+    <string name="export_to_excel">Export to Excel (.xlsx)</string>
+    <string name="download_xlsx">Download .xlsx</string>
+    <string name="save_as_xlsx">Save As…</string>
+</resources>

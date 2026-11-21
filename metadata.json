@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix AutoTrade",
+  "description": "B2B wholesale car accessories catalog, camera-first inventory management, shopkeeper approvals, and real-time order tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,493 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Pillar 0: Default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL SECURITY HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Bootstrapped admin verified via email_verified == true (prevents email spoofing)
+    function isBootstrappedAdmin() {
+      return isSignedIn() &&
+             request.auth.token.email_verified == true &&
+             request.auth.token.email == 'sehrawatj000@gmail.com';
+    }
+
+    // Zero-trust RBAC lookup against trusted admins collection or bootstrapped verified admin
+    function isAdmin() {
+      return isBootstrappedAdmin() ||
+             (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    // Approved shopkeeper or admin user
+    function isApprovedUser() {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'approved';
+    }
+
+    // --- ENTITY VALIDATION BLUEPRINTS ---
+    function isValidAdminRecord(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.email is string && data.email.size() <= 120 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidStoreSettings(data) {
+      return data.businessName is string && data.businessName.size() >= 1 && data.businessName.size() <= 100 &&
+             data.whatsappPhone is string && data.whatsappPhone.size() >= 10 && data.whatsappPhone.size() <= 15 &&
+             data.city is string && data.city.size() >= 1 && data.city.size() <= 60 &&
+             (!('showNewArrivals' in data) || data.showNewArrivals is bool) &&
+             (!('newArrivalsTitle' in data) || (data.newArrivalsTitle is string && data.newArrivalsTitle.size() >= 1 && data.newArrivalsTitle.size() <= 60)) &&
+             (!('newArrivalsLimit' in data) || (data.newArrivalsLimit is int && data.newArrivalsLimit >= 1 && data.newArrivalsLimit <= 50)) &&
+             (!('primaryColorHex' in data) || (data.primaryColorHex is string && data.primaryColorHex.matches('^#[0-9A-Fa-f]{6}$'))) &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidBusinessProfile(data) {
+      return data.firmName is string && data.firmName.size() >= 1 && data.firmName.size() <= 100 &&
+             data.address is string && data.address.size() <= 250 &&
+             data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 20 &&
+             data.gstin is string && data.gstin.size() <= 20 &&
+             data.upiId is string && data.upiId.size() <= 100 &&
+             data.invoicePrefix is string && data.invoicePrefix.size() >= 1 && data.invoicePrefix.size() <= 12 &&
+             data.nextInvoiceNumber is int && data.nextInvoiceNumber >= 1 && data.nextInvoiceNumber <= 99999999 &&
+             (!('lowStockThreshold' in data) || (data.lowStockThreshold is int && data.lowStockThreshold >= 1 && data.lowStockThreshold <= 100000)) &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 80 &&
+             data.email is string && data.email.size() <= 120 &&
+             data.shopName is string && data.shopName.size() >= 1 && data.shopName.size() <= 100 &&
+             data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 15 &&
+             data.city is string && data.city.size() >= 1 && data.city.size() <= 60 &&
+             (!('gstin' in data) || (data.gstin is string && data.gstin.size() <= 20)) &&
+             (!('fcmToken' in data) || (data.fcmToken is string && data.fcmToken.size() <= 512)) &&
+             (!('notifyOrderUpdates' in data) || data.notifyOrderUpdates is bool) &&
+             (!('notifyNewProducts' in data) || data.notifyNewProducts is bool) &&
+             data.role in ['admin', 'shopkeeper'] &&
+             data.status in ['pending', 'approved', 'blocked'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidCategory(data) {
+      return data.name is string && data.name.size() >= 1 && data.name.size() <= 50 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidProduct(data) {
+      return data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 60 &&
+             data.carModel is string && data.carModel.size() >= 1 && data.carModel.size() <= 80 &&
+             data.price is number && data.price > 0 && data.price <= 10000000 &&
+             data.moq is int && data.moq >= 1 && data.moq <= 100000 &&
+             data.inStock is bool &&
+             (!('stockQuantity' in data) || (data.stockQuantity is int && data.stockQuantity >= 0 && data.stockQuantity <= 1000000)) &&
+             (!('newArrival' in data) || data.newArrival is bool) &&
+             data.description is string && data.description.size() <= 1000 &&
+             (!('hsnCode' in data) || (data.hsnCode is string && data.hsnCode.size() <= 20)) &&
+             (!('gstPercent' in data) || (data.gstPercent is int && data.gstPercent in [0, 5, 12, 18, 28])) &&
+             data.imageUrls is list && data.imageUrls.size() <= 4 &&
+             (data.imageUrls.size() == 0 || (data.imageUrls[0] is string && data.imageUrls[0].size() <= 240000)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidOrder(data) {
+      return data.shopkeeperId is string && data.shopkeeperId.size() >= 1 && data.shopkeeperId.size() <= 128 &&
+             data.shopName is string && data.shopName.size() >= 1 && data.shopName.size() <= 100 &&
+             data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 15 &&
+             data.city is string && data.city.size() >= 1 && data.city.size() <= 60 &&
+             data.items is list && data.items.size() >= 1 && data.items.size() <= 50 &&
+             data.items[0] is map &&
+             data.totalAmount is number && data.totalAmount > 0 && data.totalAmount <= 100000000 &&
+             data.status in ['Pending', 'Confirmed', 'Dispatched', 'Delivered'] &&
+             (!('invoiceId' in data) || (data.invoiceId is string && data.invoiceId.size() <= 128)) &&
+             (!('stockDeducted' in data) || data.stockDeducted is bool) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidInvoice(data) {
+      return data.invoiceNumber is string && data.invoiceNumber.size() >= 1 && data.invoiceNumber.size() <= 40 &&
+             data.orderId is string && data.orderId.size() <= 128 &&
+             data.billType in ['GST Invoice', 'Estimate / Cash Memo'] &&
+             data.shopkeeperId is string && data.shopkeeperId.size() <= 128 &&
+             data.shopName is string && data.shopName.size() >= 1 && data.shopName.size() <= 100 &&
+             data.phone is string && data.phone.size() <= 20 &&
+             data.city is string && data.city.size() <= 60 &&
+             data.shopGstin is string && data.shopGstin.size() <= 20 &&
+             data.firmName is string && data.firmName.size() <= 100 &&
+             data.firmAddress is string && data.firmAddress.size() <= 250 &&
+             data.firmPhone is string && data.firmPhone.size() <= 20 &&
+             data.firmGstin is string && data.firmGstin.size() <= 20 &&
+             data.firmUpiId is string && data.firmUpiId.size() <= 100 &&
+             data.items is list && data.items.size() >= 1 && data.items.size() <= 50 &&
+             data.items[0] is map &&
+             data.subtotal is number && data.subtotal >= 0 && data.subtotal <= 100000000 &&
+             data.discountAmount is number && data.discountAmount >= 0 && data.discountAmount <= 100000000 &&
+             data.taxType in ['CGST+SGST', 'IGST', 'None'] &&
+             data.taxAmount is number && data.taxAmount >= 0 && data.taxAmount <= 100000000 &&
+             data.transportCharges is number && data.transportCharges >= 0 && data.transportCharges <= 10000000 &&
+             data.grandTotal is number && data.grandTotal > 0 && data.grandTotal <= 100000000 &&
+             data.paidAmount is number && data.paidAmount >= 0 && data.paidAmount <= 100000000 &&
+             data.balanceDue is number && data.balanceDue >= 0 && data.balanceDue <= 100000000 &&
+             data.paymentStatus in ['Unpaid', 'Partial', 'Paid'] &&
+             data.paymentHistory is list && data.paymentHistory.size() <= 100 &&
+             (data.paymentHistory.size() == 0 || data.paymentHistory[0] is map) &&
+             (!('stockDeducted' in data) || data.stockDeducted is bool) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidNotification(data) {
+      return data.type in ['order_status', 'new_product'] &&
+             data.targetUserId is string && data.targetUserId.size() >= 1 && data.targetUserId.size() <= 128 &&
+             data.targetTopic is string && data.targetTopic.size() <= 160 &&
+             (!('targetFcmToken' in data) || (data.targetFcmToken is string && data.targetFcmToken.size() <= 512)) &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+             data.body is string && data.body.size() >= 1 && data.body.size() <= 400 &&
+             data.orderId is string && data.orderId.size() <= 128 &&
+             data.productId is string && data.productId.size() <= 128 &&
+             data.status is string && data.status.size() <= 40 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidActivityLog(data) {
+      return data.action in [
+               'product_added', 'price_changed', 'product_updated', 'product_deleted',
+               'stock_updated', 'shopkeeper_approved', 'shopkeeper_blocked',
+               'order_status_updated', 'invoice_created', 'payment_recorded',
+               'invoice_deleted', 'settings_updated', 'theme_updated'
+             ] &&
+             data.category in ['product', 'pricing', 'shopkeeper', 'order', 'billing', 'settings'] &&
+             data.actorUid is string && data.actorUid.size() >= 1 && data.actorUid.size() <= 128 &&
+             data.actorEmail is string && data.actorEmail.size() <= 120 &&
+             data.actorName is string && data.actorName.size() <= 100 &&
+             data.targetId is string && data.targetId.size() <= 128 &&
+             data.targetName is string && data.targetName.size() >= 1 && data.targetName.size() <= 160 &&
+             data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 300 &&
+             data.previousValue is string && data.previousValue.size() <= 200 &&
+             data.newValue is string && data.newValue.size() <= 200 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    // --- 1. ADMINS COLLECTION ---
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && (request.auth.uid == adminUid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() &&
+                       isValidId(adminUid) &&
+                       incoming().keys().hasAll(['userId', 'email', 'createdAt']) &&
+                       incoming().keys().hasOnly(['userId', 'email', 'createdAt']) &&
+                       incoming().userId == adminUid &&
+                       isValidAdminRecord(incoming()) &&
+                       isAdmin();
+      allow update: if false;
+      allow delete: if isValidId(adminUid) && isAdmin();
+    }
+
+    // --- 2. SETTINGS COLLECTION ---
+    // store: readable by approved buyers (for WhatsApp ordering) & admin; writable only by admin
+    // businessProfile: strictly admin-only read/write (invoice firm details & sequential counter)
+    match /settings/{settingId} {
+      allow get: if isSignedIn() && isValidId(settingId) && (
+        isAdmin() ||
+        (settingId == 'store' && isApprovedUser())
+      );
+      allow list: if false;
+
+      allow create: if isSignedIn() && isValidId(settingId) && isAdmin() && (
+        (
+          settingId == 'store' &&
+          incoming().keys().hasAll(['businessName', 'whatsappPhone', 'city', 'updatedAt']) &&
+          incoming().keys().hasOnly(['businessName', 'whatsappPhone', 'city', 'showNewArrivals', 'newArrivalsTitle', 'newArrivalsLimit', 'primaryColorHex', 'updatedAt']) &&
+          isValidStoreSettings(incoming())
+        ) ||
+        (
+          settingId == 'businessProfile' &&
+          incoming().keys().hasAll(['firmName', 'address', 'phone', 'gstin', 'upiId', 'invoicePrefix', 'nextInvoiceNumber', 'updatedAt']) &&
+          incoming().keys().hasOnly(['firmName', 'address', 'phone', 'gstin', 'upiId', 'invoicePrefix', 'nextInvoiceNumber', 'lowStockThreshold', 'updatedAt']) &&
+          isValidBusinessProfile(incoming())
+        )
+      );
+
+      allow update: if isSignedIn() && isValidId(settingId) && isAdmin() && (
+        (
+          settingId == 'store' &&
+          isValidStoreSettings(incoming()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['businessName', 'whatsappPhone', 'city', 'showNewArrivals', 'newArrivalsTitle', 'newArrivalsLimit', 'primaryColorHex', 'updatedAt'])
+        ) ||
+        (
+          settingId == 'businessProfile' &&
+          isValidBusinessProfile(incoming()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['firmName', 'address', 'phone', 'gstin', 'upiId', 'invoicePrefix', 'nextInvoiceNumber', 'lowStockThreshold', 'updatedAt'])
+        )
+      );
+
+      allow delete: if false;
+    }
+
+    // --- 3. USERS COLLECTION (PII ISOLATED) ---
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+
+      // CREATE: Prevent self-assigned admin role or auto-approval for non-admins
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'name', 'email', 'shopName', 'phone', 'city', 'role', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'name', 'email', 'shopName', 'phone', 'city', 'gstin', 'fcmToken', 'notifyOrderUpdates', 'notifyNewProducts', 'role', 'status', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming()) &&
+                       (
+                         (incoming().role == 'shopkeeper' && incoming().status == 'pending') ||
+                         (incoming().role == 'admin' && incoming().status == 'approved' && isAdmin())
+                       );
+
+      // UPDATE: Action-based tiering (Owner edits contact/GSTIN/FCM preferences; Admin approves/blocks accounts)
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         // Action 1: Owner updates own contact/shop/FCM settings (cannot change role or status)
+                         (
+                           request.auth.uid == userId &&
+                           incoming().role == existing().role &&
+                           incoming().status == existing().status &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['name', 'shopName', 'phone', 'city', 'gstin', 'fcmToken', 'notifyOrderUpdates', 'notifyNewProducts', 'updatedAt'])
+                         ) ||
+                         // Action 2: Admin approves or blocks a shopkeeper account
+                         (
+                           isAdmin() &&
+                           incoming().role == existing().role &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+                         )
+                       );
+
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // --- 4. CATEGORIES COLLECTION ---
+    match /categories/{categoryId} {
+      allow get: if isSignedIn() && isValidId(categoryId) && (isAdmin() || isApprovedUser());
+      allow list: if isSignedIn() && (isAdmin() || isApprovedUser());
+
+      allow create: if isSignedIn() &&
+                       isValidId(categoryId) &&
+                       incoming().keys().hasAll(['name', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['name', 'createdAt', 'updatedAt']) &&
+                       isValidCategory(incoming()) &&
+                       isAdmin();
+
+      allow update: if isSignedIn() &&
+                       isValidId(categoryId) &&
+                       isValidCategory(incoming()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt']) &&
+                       isAdmin();
+
+      allow delete: if isValidId(categoryId) && isAdmin();
+    }
+
+    // --- 5. PRODUCTS COLLECTION (WHOLESALE CATALOG) ---
+    match /products/{productId} {
+      allow get: if isSignedIn() && isValidId(productId) && (isAdmin() || isApprovedUser());
+      allow list: if isSignedIn() && (isAdmin() || isApprovedUser());
+
+      allow create: if isSignedIn() &&
+                       isValidId(productId) &&
+                       incoming().keys().hasAll(['name', 'category', 'carModel', 'price', 'moq', 'inStock', 'description', 'imageUrls', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['name', 'category', 'carModel', 'price', 'moq', 'inStock', 'stockQuantity', 'newArrival', 'description', 'hsnCode', 'gstPercent', 'imageUrls', 'createdAt', 'updatedAt']) &&
+                       isValidProduct(incoming()) &&
+                       isAdmin();
+
+      allow update: if isSignedIn() &&
+                       isValidId(productId) &&
+                       isValidProduct(incoming()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       isAdmin() &&
+                       (
+                         // Action 1: Full product edit (including optional stockQuantity, HSN/GST & newArrival)
+                         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'category', 'carModel', 'price', 'moq', 'inStock', 'stockQuantity', 'newArrival', 'description', 'hsnCode', 'gstPercent', 'imageUrls', 'updatedAt']) ||
+                         // Action 2: Quick stock toggle or quantity adjustment
+                         incoming().diff(existing()).affectedKeys().hasOnly(['inStock', 'updatedAt']) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly(['stockQuantity', 'updatedAt']) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly(['stockQuantity', 'inStock', 'updatedAt']) ||
+                         // Action 3: Quick New Arrival toggle
+                         incoming().diff(existing()).affectedKeys().hasOnly(['newArrival', 'updatedAt'])
+                       );
+
+      allow delete: if isValidId(productId) && isAdmin();
+    }
+
+    // --- 6. ORDERS COLLECTION ---
+    match /orders/{orderId} {
+      allow get: if isSignedIn() &&
+                    isValidId(orderId) &&
+                    (isAdmin() || (existing().shopkeeperId == request.auth.uid && isApprovedUser()));
+
+      allow list: if isSignedIn() &&
+                     (isAdmin() || (resource.data.shopkeeperId == request.auth.uid && isApprovedUser()));
+
+      allow create: if isSignedIn() &&
+                       isValidId(orderId) &&
+                       incoming().shopkeeperId == request.auth.uid &&
+                       incoming().status == 'Pending' &&
+                       incoming().keys().hasAll(['shopkeeperId', 'shopName', 'phone', 'city', 'items', 'totalAmount', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['shopkeeperId', 'shopName', 'phone', 'city', 'items', 'totalAmount', 'status', 'invoiceId', 'stockDeducted', 'createdAt', 'updatedAt']) &&
+                       (!('stockDeducted' in incoming()) || incoming().stockDeducted == false) &&
+                       isValidOrder(incoming()) &&
+                       (isAdmin() || isApprovedUser());
+
+      // Only Admin can update order status, link generated invoiceId, or mark stockDeducted
+      allow update: if isSignedIn() &&
+                       isValidId(orderId) &&
+                       isValidOrder(incoming()) &&
+                       incoming().shopkeeperId == existing().shopkeeperId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isAdmin() &&
+                       (
+                         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'stockDeducted', 'updatedAt']) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly(['invoiceId', 'updatedAt']) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly(['invoiceId', 'stockDeducted', 'updatedAt']) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'invoiceId', 'updatedAt']) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'invoiceId', 'stockDeducted', 'updatedAt'])
+                       );
+
+      allow delete: if isValidId(orderId) && isAdmin();
+    }
+
+    // --- 7. INVOICES COLLECTION (BILLING & UDHAAR) ---
+    match /invoices/{invoiceId} {
+      allow get: if isSignedIn() &&
+                    isValidId(invoiceId) &&
+                    (isAdmin() || (existing().shopkeeperId == request.auth.uid && isApprovedUser()));
+
+      allow list: if isSignedIn() &&
+                     (isAdmin() || (resource.data.shopkeeperId == request.auth.uid && isApprovedUser()));
+
+      allow create: if isSignedIn() &&
+                       isValidId(invoiceId) &&
+                       incoming().keys().hasAll([
+                         'invoiceNumber', 'orderId', 'billType', 'shopkeeperId', 'shopName', 'phone', 'city',
+                         'shopGstin', 'firmName', 'firmAddress', 'firmPhone', 'firmGstin', 'firmUpiId',
+                         'items', 'subtotal', 'discountAmount', 'taxType', 'taxAmount', 'transportCharges',
+                         'grandTotal', 'paidAmount', 'balanceDue', 'paymentStatus', 'paymentHistory',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'invoiceNumber', 'orderId', 'billType', 'shopkeeperId', 'shopName', 'phone', 'city',
+                         'shopGstin', 'firmName', 'firmAddress', 'firmPhone', 'firmGstin', 'firmUpiId',
+                         'items', 'subtotal', 'discountAmount', 'taxType', 'taxAmount', 'transportCharges',
+                         'grandTotal', 'paidAmount', 'balanceDue', 'paymentStatus', 'paymentHistory',
+                         'stockDeducted', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidInvoice(incoming()) &&
+                       isAdmin();
+
+      allow update: if isSignedIn() &&
+                       isValidId(invoiceId) &&
+                       isValidInvoice(incoming()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().invoiceNumber == existing().invoiceNumber &&
+                       isAdmin() &&
+                       (
+                         // Action 1: Record payment & recalculate Udhaar balance
+                         incoming().diff(existing()).affectedKeys().hasOnly(['paidAmount', 'balanceDue', 'paymentStatus', 'paymentHistory', 'updatedAt']) ||
+                         // Action 2: Full bill edit by Admin
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'billType', 'shopkeeperId', 'shopName', 'phone', 'city', 'shopGstin',
+                           'items', 'subtotal', 'discountAmount', 'taxType', 'taxAmount', 'transportCharges',
+                           'grandTotal', 'paidAmount', 'balanceDue', 'paymentStatus', 'paymentHistory', 'updatedAt'
+                         ])
+                       );
+
+      allow delete: if isValidId(invoiceId) && isAdmin();
+    }
+
+    // --- 8. NOTIFICATIONS COLLECTION (FCM DISPATCH & LIVE SHOPKEEPER ALERTS) ---
+    match /notifications/{notificationId} {
+      allow get: if isSignedIn() &&
+                    isValidId(notificationId) &&
+                    (
+                      isAdmin() ||
+                      (
+                        isApprovedUser() &&
+                        (existing().targetUserId == request.auth.uid || existing().targetUserId == 'ALL_BUYERS')
+                      )
+                    );
+
+      allow list: if isSignedIn() &&
+                     (
+                       isAdmin() ||
+                       (
+                         isApprovedUser() &&
+                         (resource.data.targetUserId == request.auth.uid || resource.data.targetUserId == 'ALL_BUYERS')
+                       )
+                     );
+
+      allow create: if isSignedIn() &&
+                       isValidId(notificationId) &&
+                       isAdmin() &&
+                       incoming().keys().hasAll(['type', 'targetUserId', 'targetTopic', 'title', 'body', 'orderId', 'productId', 'status', 'createdAt']) &&
+                       incoming().keys().hasOnly(['type', 'targetUserId', 'targetTopic', 'targetFcmToken', 'title', 'body', 'orderId', 'productId', 'status', 'createdAt']) &&
+                       isValidNotification(incoming());
+
+      allow update: if false;
+      allow delete: if isValidId(notificationId) && isAdmin();
+    }
+
+    // --- 9. ADMIN ACTIVITY LOGS COLLECTION (IMMUTABLE AUDIT TRAIL) ---
+    match /activityLogs/{logId} {
+      allow get: if isSignedIn() && isValidId(logId) && isAdmin();
+      allow list: if isSignedIn() && isAdmin();
+
+      // Append-only: Only verified admins can append logs bound to their own actorUid
+      allow create: if isSignedIn() &&
+                       isValidId(logId) &&
+                       isAdmin() &&
+                       incoming().actorUid == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'action', 'category', 'actorUid', 'actorEmail', 'actorName',
+                         'targetId', 'targetName', 'summary', 'previousValue', 'newValue', 'createdAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'action', 'category', 'actorUid', 'actorEmail', 'actorName',
+                         'targetId', 'targetName', 'summary', 'previousValue', 'newValue', 'createdAt'
+                       ]) &&
+                       isValidActivityLog(incoming());
+
+      // Strictly immutable for security & accountability (no edits or deletions)
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}
